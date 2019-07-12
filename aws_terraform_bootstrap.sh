@@ -1,6 +1,14 @@
 #!/bin/bash
 
-# Based on https://github.com/hashicorp/terraform/issues/12877#issuecomment-311649591
+# Based on:
+# * https://github.com/hashicorp/terraform/issues/12877#issuecomment-311649591
+# * https://www.terraform.io/docs/backends/types/s3.html
+
+# This script creates the AWS S3 bucket and DynamoDB that Terraform needs to
+# have a lockable remote state, outputs a backend.tf file, and runs terraform
+# init. I use AWS Named Profiles and just export my AWS_PROFILE and
+# AWS_DEFAULT_REGION before running this script to have it create the
+# infrastructure for Terraform.
 
 # Architectural choices:
 #
