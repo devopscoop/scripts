@@ -52,7 +52,7 @@ aws s3api put-bucket-versioning \
 
 dynamodb_exists=$(aws dynamodb list-tables --output json | jq -r '.TableNames[] | contains("terraform-us-east-1")')
 
-if ! $dynamodb_exists; then
+if [[ "$dynamodb_exists" != 'true' ]]; then
   aws dynamodb create-table \
     --attribute-definitions 'AttributeName=LockID,AttributeType=S' \
     --key-schema 'AttributeName=LockID,KeyType=HASH' \
