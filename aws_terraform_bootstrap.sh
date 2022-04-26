@@ -26,7 +26,7 @@ if [[ -z $AWS_DEFAULT_REGION ]]; then
 ERROR: Please set the AWS_DEFAULT_REGION environment variable. For example:
 
 export AWS_DEFAULT_REGION=us-east-1
-   
+
 EOF
   exit
 fi
