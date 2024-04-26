@@ -33,18 +33,22 @@ aws configure sso-session
 
 aws sso login --sso-session "${org_name}"
 
-export latest_sso_file=$(ls -1t "${HOME}/.aws/sso/cache" | head -n 1)
-export access_token=$(jq -r .accessToken "${HOME}/.aws/sso/cache/${latest_sso_file}")
+export latest_sso_file="$(ls -1t "${HOME}/.aws/sso/cache" | head -n 1)"
+export access_token="$(jq -r .accessToken "${HOME}/.aws/sso/cache/${latest_sso_file}")"
 
-account_list_json=$(aws sso list-accounts --access-token "${access_token}")
+account_list_json="$(aws sso list-accounts --access-token "${access_token}")"
 
 while read -r account_id; do
-  account_name=$(echo "${account_list_json}" | jq -r ".accountList[] | select(.accountId == \"${account_id}\") | .accountName")
-  role_list_json=$(aws sso list-account-roles --access-token "${access_token}" --account-id "${account_id}")
+  account_name="$(echo "${account_list_json}" | jq -r ".accountList[] | select(.accountId == \"${account_id}\") | .accountName")"
+  role_list_json="$(aws sso list-account-roles --access-token "${access_token}" --account-id "${account_id}")"
   while read -r role_name; do
+
+    # Replacing spaces in profile names with '\ ' because Terraform can't handle quoted AWS_PROFILE names.
+    # https://github.com/hashicorp/terraform/issues/35091
+    profile_name="$(echo "${account_name}_${role_name}" | sed 's/ /\\ /g')"
     cat <<EOF>> "${HOME}/.aws/config"
 
-[profile "${account_name}_${role_name}"] 
+[profile ${profile_name}]
 sso_session = ${org_name}
 sso_account_id = ${account_id}
 sso_role_name = ${role_name}
