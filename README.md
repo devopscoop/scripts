@@ -35,14 +35,12 @@ Then enter the code:
 
 FQNH-MVQL
 Successfully logged into Start URL: https://mycompany.awsapps.com/start
-Added Hideous Monolith Dev_Admin
-Added Hideous Monolith Prod_ReadOnly
-Added sandbox_SuperAdmin
-Added cool-new-product-dev_Admin
-Added cool-new-product-test_PowerUser
-Added cool-new-product-prod_ReadOnly
-Added special_snowflake_client-dev_Admin
-Added special_snowflake_client-test_PowerUser
-Added special_snowflake_client-stage_ReadOnly
-Added special_snowflake_client-prod_ReadOnly
+Added mycompany_sandbox_SuperAdmin
+Added mycompany_cool-new-product-dev_Admin
+Added mycompany_cool-new-product-test_PowerUser
+Added mycompany_cool-new-product-prod_ReadOnly
+Added mycompany_special_snowflake_client-dev_Admin
+Added mycompany_special_snowflake_client-test_PowerUser
+Added mycompany_special_snowflake_client-stage_ReadOnly
+Added mycompany_special_snowflake_client-prod_ReadOnly
 ```
