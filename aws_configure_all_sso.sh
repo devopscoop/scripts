@@ -46,14 +46,11 @@ while read -r account_id; do
     # Replacing spaces in profile names with '\ ' because Terraform can't handle quoted AWS_PROFILE names.
     # https://github.com/hashicorp/terraform/issues/35091
     profile_name="$(echo "${org_name}_${account_name}_${role_name}" | sed 's/ /\\ /g')"
-    cat <<EOF>> "${HOME}/.aws/config"
 
-[profile ${profile_name}]
-sso_session = ${org_name}
-sso_account_id = ${account_id}
-sso_role_name = ${role_name}
-region = ${AWS_DEFAULT_REGION}
-EOF
+    aws configure set "profile.${profile_name}.sso_session" "${org_name}"
+    aws configure set "profile.${profile_name}.sso_account_id" "${account_id}"
+    aws configure set "profile.${profile_name}.sso_role_name" "${role_name}"
+    aws configure set "profile.${profile_name}.region" "${AWS_DEFAULT_REGION}"
     echo "Added ${profile_name}"
   done < <(echo "$role_list_json" | jq -r '.roleList[].roleName')
 done < <(echo "$account_list_json" | jq -r '.accountList[].accountId')

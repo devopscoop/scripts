@@ -5,7 +5,7 @@
 This configures all of your AWS IAM Identity Center (SSO) account and role combinations, so you don't have to loop through `aws configure sso` dozens of times, or copy-paste a bunch of junk in your ~/.aws/config. Here is example usage:
 
 ```
-[evans@archlinux ~]$ ./aws_configure_all_sso.sh 
+[evans@archlinux ~]$ ./aws_configure_all_sso.sh
 
 ERROR: You must specify your start URL prefix and region like this:
 
