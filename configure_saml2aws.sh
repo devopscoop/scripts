@@ -31,6 +31,6 @@ while read -r line; do
     echo "$line" | grep -q '^Account:' && account=$(echo "$line" | awk '{ print $2 }') && continue
     echo "$line" | grep -q '^arn:' && arn="$line"
     role=$(echo "$arn" | cut -d / -f 2)
-    aws --profile ${account}_${role} configure set credential_process "saml2aws login --credential-process --role ${arn} --profile saml"
+    aws --profile ${account}_${role} configure set credential_process "saml2aws login --credential-process --role ${arn} --profile ${account}_${role}"
   fi
 done < <(saml2aws list-roles --skip-prompt 2>/dev/null)
