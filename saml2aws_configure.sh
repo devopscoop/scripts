@@ -5,7 +5,10 @@ cat <<EOF>&2
 
 ERROR: Missing credentials. Run this script like this:
 
-  SAML2AWS_USERNAME=your_Okta_username SAML2AWS_PASSWORD=your_Okta_password $0
+  SAML2AWS_USERNAME=your_Okta_username \
+  SAML2AWS_PASSWORD=your_Okta_password \
+  okta_url=your_Okta_amazon_aws_url \
+  $0
 
 EOF
   exit 1
@@ -24,7 +27,7 @@ saml2aws configure \
   --mfa DUO \
   --session-duration 43200 \
   --skip-prompt \
-  --url https://dfinity.okta.com/home/amazon_aws/0oaakgpu6dUVPYM9y357/272
+  --url $okta_url
 
 while read -r line; do
   if [[ -n $line ]]; then
