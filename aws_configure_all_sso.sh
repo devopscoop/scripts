@@ -19,6 +19,8 @@ EOF
   exit 1
 fi
 
+echo "Deprecated: Use [aws-sso-cli](https://github.com/synfinatic/aws-sso-cli) instead."
+
 export org_name="${1}"
 export AWS_DEFAULT_REGION="${2}"
 
