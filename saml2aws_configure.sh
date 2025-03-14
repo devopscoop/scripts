@@ -1,6 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-if [[ -z $SAML2AWS_USERNAME || -z $SAML2AWS_PASSWORD ]]; then
+if [[ -z $SAML2AWS_USERNAME || -z $SAML2AWS_PASSWORD || -z $okta_url ]]; then
 cat <<EOF>&2
 
 ERROR: Missing credentials. Run this script like this:
@@ -27,7 +27,7 @@ saml2aws configure \
   --mfa DUO \
   --session-duration 43200 \
   --skip-prompt \
-  --url $okta_url
+  --url "$okta_url"
 
 while read -r line; do
   if [[ -n $line ]]; then
