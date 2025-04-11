@@ -1,6 +1,28 @@
 # AWS tools
 
-## aws_configure_all_sso.sh
+## saml2aws
+
+Here are two helper scripts for saml2aws.
+
+### saml2aws_configure.sh
+
+Run this script once with your Okta username, password, and Okta Amazon AWS URL like this:
+
+```
+SAML2AWS_USERNAME=your_Okta_username SAML2AWS_PASSWORD=your_Okta_password okta_url=your_Okta_amazon_aws_url ./saml2aws_configure.sh
+```
+
+This will create a `~/.saml2aws` file with sane defaults and DUO MFA.
+
+### saml2aws_login.sh
+
+Run this script daily to log you into all possible combinations of AWS account and role, and create AWS Profiles for each of them with the naming scheme `${account}_${role}`.
+
+## Deprecated
+
+### aws_configure_all_sso.sh (Deprecated)
+
+> Deprecated: Use [aws-sso-cli](https://github.com/synfinatic/aws-sso-cli) instead.
 
 This configures all of your AWS IAM Identity Center (SSO) account and role combinations, so you don't have to loop through `aws configure sso` dozens of times, or copy-paste a bunch of junk in your ~/.aws/config. Here is example usage:
 

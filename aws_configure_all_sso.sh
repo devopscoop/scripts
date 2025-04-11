@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # https://vaneyckt.io/posts/safer_bash_scripts_with_set_euxo_pipefail/
 # Not using "-x" because we aren't debugging.
@@ -18,6 +18,8 @@ $0 mycompany us-west-2
 EOF
   exit 1
 fi
+
+echo "Deprecated: Use [aws-sso-cli](https://github.com/synfinatic/aws-sso-cli) instead."
 
 export org_name="${1}"
 export AWS_DEFAULT_REGION="${2}"
