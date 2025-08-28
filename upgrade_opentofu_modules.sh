@@ -4,7 +4,7 @@
 rm .terraform.lock.hcl
 
 # Comment out all module versions so `tofu init -upgrade` can pull the latest versions.
-grep -rI --exclude-dir bootstrap --exclude-dir .git --exclude-dir .terraform -E '^[ ]+version[ ]+=' -l | xargs sed -Ei 's/^([ ]+)version /#\1version /'
+grep -rI --exclude-dir .git --exclude-dir .terraform -E '^[ ]+version[ ]+=' -l | xargs sed -Ei 's/^([ ]+)version /#\1version /'
 
 # Upgrade everything!
 tofu init -upgrade
