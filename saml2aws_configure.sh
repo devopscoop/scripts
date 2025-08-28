@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 
-if [[ -z $SAML2AWS_USERNAME || -z $SAML2AWS_PASSWORD || -z $okta_url ]]; then
+if [[ -z $SAML2AWS_USERNAME || -z $SAML2AWS_PASSWORD || -z $idp_provider || -z $mfa || -z $url ]]; then
 cat <<EOF>&2
 
-ERROR: Missing credentials. Run this script like this:
+ERROR: Missing variables. Run this script like this (substituting your own credentials and settings):
 
-  SAML2AWS_USERNAME=your_Okta_username \
-  SAML2AWS_PASSWORD=your_Okta_password \
-  okta_url=your_Okta_amazon_aws_url \
+  SAML2AWS_USERNAME='al.jourgensen@ministry.org' \
+  SAML2AWS_PASSWORD='ΚΕΦΑΛΗΞΘ' \
+  idp_provider='Okta' \
+  mfa='PUSH' \
+  url='https://ministry.okta.com/home/amazon_aws/0oabvgtu6dXVPYN4y366/182' \
   $0
 
 EOF
@@ -23,17 +25,17 @@ fi
 #  --url is the url. Come on. Do I gotta explain everything?
 saml2aws configure \
   --cache-saml \
-  --idp-provider Okta \
-  --mfa DUO \
+  --idp-provider "$idp_provider" \
+  --mfa "$mfa" \
   --session-duration 43200 \
   --skip-prompt \
-  --url "$okta_url"
+  --url "$url"
 
 while read -r line; do
   if [[ -n $line ]]; then
     echo "$line" | grep -q '^Account:' && account=$(echo "$line" | awk '{ print $2 }') && continue
     echo "$line" | grep -q '^arn:' && arn="$line"
     role=$(echo "$arn" | cut -d / -f 2)
-    aws --profile ${account}_${role} configure set credential_process "saml2aws login --credential-process --role ${arn} --profile ${account}_${role}"
+    aws --profile "${account}_${role}" configure set credential_process "saml2aws login --credential-process --role ${arn} --profile ${account}_${role}"
   fi
 done < <(saml2aws list-roles --skip-prompt 2>/dev/null)
