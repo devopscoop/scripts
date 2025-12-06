@@ -1,0 +1,22 @@
+name: Image Retention Policy
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '12 20 * * *'
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .github/workflows
+    permissions:
+      packages: write
+      contents: read
+    env:
+      org: ${{ github.repository_owner }}
+      package_name: ${{ github.repository }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      dry_run: true
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - run: ./image-retention-policy.sh
