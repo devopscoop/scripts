@@ -114,10 +114,19 @@ echo "Deleting ${#delete_ids[@]} versions"
 for id in "${delete_ids[@]}"; do
   echo "Deleting version id $id"
   if [[ "$dry_run" == "false" ]]; then
-    gh api \
-      --method DELETE \
-      "/orgs/${org}/packages/container/${package_name}/versions/${id}" || \
-      echo "Failed to delete $id (possibly already deleted)"
+
+    # TODO: This doesn't actually work correctly yet. It doesn't check to see which tags a particular version is being used by, so what happens is that your tags remain, but when you try to pull the images, you get "manifest unknown" errors. The fix is to check each version id for tags, and don't delete any versions if they are being used by tags you want to keep. I don't know how to do this yet. Something like this:
+    #
+    # # Get version details before deleting
+    # version_tags=$(gh api "/orgs/${org}/packages/container/${package_name}/versions/${id}" --jq '.metadata.container.tags | join(", ")')
+    # echo "This version has tags: ${version_tags}"
+    # echo "Deleting this will remove ALL these tags"
+    #
+    # gh api \
+    #   --method DELETE \
+    #   "/orgs/${org}/packages/container/${package_name}/versions/${id}" || \
+    #   echo "Failed to delete $id (possibly already deleted)"
+
   fi
 done
 

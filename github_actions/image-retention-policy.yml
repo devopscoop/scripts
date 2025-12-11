@@ -4,7 +4,7 @@ on:
   schedule:
     - cron: '12 20 * * *'
 jobs:
-  cleanup:
+  image-retention-policy:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -14,9 +14,19 @@ jobs:
       contents: read
     env:
       org: ${{ github.repository_owner }}
-      package_name: ${{ github.repository }}
+
+      # If you want to set your package_name manually, do it here, then comment out the "- run: echo package_name..." line below.
+      # We can't use `${{github.repository}}` here, because it's in the format of "octocat/Hello-World", and we just need "Hello-World".
+      # https://docs.github.com/en/actions/reference/workflows-and-actions/contexts
+      # package_name: your_package_name
+
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       dry_run: true
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      # Automatically setting package name to the name of the repository.
+      # https://docs.github.com/en/actions/reference/workflows-and-actions/variables
+      - run: echo "package_name=${GITHUB_REPOSITORY##*/}" >> $GITHUB_ENV
+
       - run: ./image-retention-policy.sh
