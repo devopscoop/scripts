@@ -70,12 +70,11 @@ def vevent_key_by_content(vevent: Any) -> tuple[str, str, str]:
 def _candidate_principal_urls(base_url: str, username: str):
     """Return URL candidates to try for the CalDAV principal."""
     base = base_url.rstrip('/')
-    yield base
-    yield f"{base}/principals/users/{username}/"
-    yield f"{base}/principals/__uids__/{username}/"
 
-    # Nextcloud / ownCloud
-    for prefix in ('', '/remote.php/dav', '/remote.php'):
+    yield base  # try user-supplied URL as-is (full principal URL)
+
+    # Nextcloud / ownCloud servers — try various path prefixes
+    for prefix in ('/remote.php/dav', '/remote.php', ''):
         yield f"{base}{prefix}/principals/users/{username}/"
         yield f"{base}{prefix}/principals/__uids__/{username}/"
 
@@ -84,6 +83,7 @@ def connect(creds: dict[str, Optional[str]]) -> tuple[caldav.DAVClient, caldav.P
     """Try candidate principal URLs and return (client, principal)."""
     username = creds['username']
     base = creds['url']
+    print(f"Discovering CalDAV principal URL for user '{username}' ...")
 
     for url in _candidate_principal_urls(base, username):
         try:
@@ -93,10 +93,10 @@ def connect(creds: dict[str, Optional[str]]) -> tuple[caldav.DAVClient, caldav.P
                 password=creds['password'],
             )
             principal = caldav.Principal(client)
-            print(f"Connected via: {url}")
+            print(f"✓ Connected via: {url}")
             return client, principal
         except caldav.lib.error.DAVError:
-            print(f"  Failed: {url}", file=sys.stderr)
+            print(f"  ✗ {url}")
 
     msg = (
         'Could not connect. Try setting CALDAV_URL to a full principal URL, e.g.\n'
