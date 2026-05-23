@@ -3,20 +3,22 @@
 
 import argparse
 import os
-import re
+import sys
 from collections import defaultdict
 from datetime import datetime
+from typing import Any, Optional
 
 import caldav
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description='Scan a CalDAV calendar for duplicate events'
     )
     parser.add_argument('--url', help='CalDAV server URL')
     parser.add_argument('--username', help='CalDAV username')
-    parser.add_argument('--password', help='CalDAV password')
+    parser.add_argument('--password', help='CalDAV password (mutually exclusive with --password-file)')
+    parser.add_argument('--password-file', help='Read CalDAV password from file')
     parser.add_argument('--calendar', help='Calendar name (skip interactive pick)')
     parser.add_argument(
         '--backup-dir',
@@ -29,15 +31,28 @@ def parse_args():
     return parser.parse_args()
 
 
-def get_creds(args):
+def _read_password(args: argparse.Namespace) -> Optional[str]:
+    if args.password_file:
+        try:
+            with open(args.password_file) as f:
+                return f.readline().rstrip('\n\r')
+        except OSError as e:
+            print(f"Error reading password file: {e}", file=sys.stderr)
+            return None
+    if args.password:
+        return args.password
+    return os.environ.get('CALDAV_PASSWORD')
+
+
+def get_creds(args: argparse.Namespace) -> dict[str, Optional[str]]:
     return {
         'url': args.url or os.environ.get('CALDAV_URL'),
         'username': args.username or os.environ.get('CALDAV_USERNAME'),
-        'password': args.password or os.environ.get('CALDAV_PASSWORD'),
+        'password': _read_password(args),
     }
 
 
-def _safe_val(vevent, name):
+def _safe_val(vevent: Any, name: str) -> str:
     """Return the string value of a vobject property or empty string."""
     try:
         return str(getattr(vevent, name).value)
@@ -45,14 +60,14 @@ def _safe_val(vevent, name):
         return ''
 
 
-def vevent_key_by_content(vevent):
+def vevent_key_by_content(vevent: Any) -> tuple[str, str, str]:
     s = _safe_val(vevent, 'summary')
     dtstart = _safe_val(vevent, 'dtstart')
     dtend = _safe_val(vevent, 'dtend')
     return (s, dtstart, dtend)
 
 
-def _candidate_principal_urls(base_url, username):
+def _candidate_principal_urls(base_url: str, username: str):
     """Return URL candidates to try for the CalDAV principal."""
     base = base_url.rstrip('/')
     yield base
@@ -65,7 +80,7 @@ def _candidate_principal_urls(base_url, username):
         yield f"{base}{prefix}/principals/__uids__/{username}/"
 
 
-def connect(creds):
+def connect(creds: dict[str, Optional[str]]) -> tuple[caldav.DAVClient, caldav.Principal]:
     """Try candidate principal URLs and return (client, principal)."""
     username = creds['username']
     base = creds['url']
@@ -81,7 +96,7 @@ def connect(creds):
             print(f"Connected via: {url}")
             return client, principal
         except caldav.lib.error.DAVError:
-            continue
+            print(f"  Failed: {url}", file=sys.stderr)
 
     msg = (
         'Could not connect. Try setting CALDAV_URL to a full principal URL, e.g.\n'
@@ -90,69 +105,60 @@ def connect(creds):
     raise ConnectionError(msg)
 
 
-def main():
-    args = parse_args()
-    creds = get_creds(args)
-
+def validate_creds(creds: dict[str, Optional[str]]) -> bool:
     missing = [k for k, v in creds.items() if not v]
     if missing:
         print(
             f"Missing required config: {', '.join(missing)}. "
             'Provide via --flags or CALDAV_URL / CALDAV_USERNAME / CALDAV_PASSWORD env vars.'
         )
-        return 1
+        return False
+    return True
 
-    client, principal = connect(creds)
-    calendars = principal.calendars()
 
-    if not calendars:
-        print('No calendars found.')
-        return 1
-
-    if args.calendar:
-        cal = next((c for c in calendars if c.get_display_name() == args.calendar), None)
+def select_calendar(calendars: list[caldav.Calendar], calendar_name: Optional[str]) -> Optional[caldav.Calendar]:
+    if calendar_name:
+        cal = next((c for c in calendars if c.get_display_name() == calendar_name), None)
         if not cal:
             names = [c.get_display_name() for c in calendars]
-            print(f"Calendar '{args.calendar}' not found. Available: {names}")
-            return 1
-    elif len(calendars) == 1:
+            print(f"Calendar '{calendar_name}' not found. Available: {names}")
+            return None
+        return cal
+    if len(calendars) == 1:
         cal = calendars[0]
         print(f"Using calendar: {cal.get_display_name()}")
-    else:
-        print('Available calendars:')
-        for i, c in enumerate(calendars, 1):
-            print(f"  {i}. {c.get_display_name() or c.name}")
-        while True:
-            try:
-                choice = input('Select calendar (number): ').strip()
-                idx = int(choice) - 1
-                if 0 <= idx < len(calendars):
-                    cal = calendars[idx]
-                    break
-                print(f"Enter a number between 1 and {len(calendars)}.")
-            except (ValueError, EOFError):
-                print('Invalid input.')
+        return cal
+    print('Available calendars:')
+    for i, c in enumerate(calendars, 1):
+        print(f"  {i}. {c.get_display_name() or c.name}")
+    while True:
+        try:
+            choice = input('Select calendar (number): ').strip()
+            idx = int(choice) - 1
+            if 0 <= idx < len(calendars):
+                return calendars[idx]
+            print(f"Enter a number between 1 and {len(calendars)}.")
+        except (ValueError, EOFError):
+            print('Invalid input.')
+        except KeyboardInterrupt:
+            print()
+            return None
 
-    print('Fetching events ...')
-    events = cal.events()
-    print(f"Found {len(events)} event(s).\n")
 
-    cal_name = cal.get_display_name() or 'calendar'
+def backup_events(events: list[caldav.Event], backup_dir: str, cal_name: str) -> str:
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    backup_path = os.path.join(args.backup_dir, f"{cal_name}_{ts}.ics")
+    backup_path = os.path.join(backup_dir, f"{cal_name}_{ts}.ics")
     print(f"Backing up to {backup_path} ...")
-    vevent_re = re.compile(r'BEGIN:VEVENT.+?END:VEVENT', re.DOTALL | re.IGNORECASE)
     with open(backup_path, 'w') as f:
-        f.write('BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//caldav_dupes//EN\r\n')
         for ev in events:
-            match = vevent_re.search(ev.data)
-            if match:
-                f.write(match.group() + '\r\n')
-        f.write('END:VCALENDAR\r\n')
+            f.write(ev.data + '\r\n')
     print()
+    return backup_path
 
-    uid_map = defaultdict(list)
-    content_map = defaultdict(list)
+
+def find_duplicates(events: list[caldav.Event]) -> tuple[bool, list[tuple[str, list[caldav.Event]]], list[tuple[tuple[str, str, str], list[caldav.Event]]], list[caldav.Event]]:
+    uid_map: dict[str, list[caldav.Event]] = defaultdict(list)
+    content_map: dict[tuple[str, str, str], list[caldav.Event]] = defaultdict(list)
 
     for ev in events:
         vevent = ev.vobject_instance.vevent
@@ -163,13 +169,12 @@ def main():
             k = vevent_key_by_content(vevent)
             content_map[k].append(ev)
 
-    found_any = False
-    to_delete = []  # events to remove (keep one per group)
+    to_delete: list[caldav.Event] = []
+    to_delete_set: set[caldav.Event] = set()
 
     # 1. Duplicates by UID
     dupes_by_uid = [(uid, evs) for uid, evs in uid_map.items() if len(evs) > 1]
     if dupes_by_uid:
-        found_any = True
         print('=== Duplicates by UID ===')
         for uid, evs in dupes_by_uid:
             print(f"\nUID: {uid}  ({len(evs)} occurrences)")
@@ -179,14 +184,15 @@ def main():
                     f"  {_safe_val(vevent, 'summary') or '(no summary)'}  "
                     f"({_safe_val(vevent, 'dtstart') or '?'} -> {_safe_val(vevent, 'dtend') or '?'})"
                 )
-            to_delete.extend(evs[1:])  # keep first
+            for ev in evs[1:]:
+                to_delete.append(ev)
+                to_delete_set.add(ev)
 
     # 2. Duplicates by content
     dupes_by_content = [
         (k, evs) for k, evs in content_map.items() if len(evs) > 1
     ]
     if dupes_by_content:
-        found_any = True
         print('\n=== Duplicates by content (different UID, same summary+start+end) ===')
         for k, evs in dupes_by_content:
             print(f"\n  {k[0] or '(no summary)'}")
@@ -195,17 +201,20 @@ def main():
             for ev in evs:
                 uid = _safe_val(ev.vobject_instance.vevent, 'uid')
                 print(f"    UID: {uid}")
-            # Don't re-add content-based dupes if already in to_delete via UID
-            keep = evs[0]
             for ev in evs[1:]:
-                if ev not in to_delete:
+                if ev not in to_delete_set:
                     to_delete.append(ev)
+                    to_delete_set.add(ev)
 
-    if not found_any:
-        print('No duplicate events found.')
+    found_any = bool(dupes_by_uid or dupes_by_content)
+    return found_any, dupes_by_uid, dupes_by_content, to_delete
+
+
+def confirm_and_delete(to_delete: list[caldav.Event], num_uid_groups: int, num_content_groups: int, args: argparse.Namespace) -> int:
+    if not to_delete:
         return 0
 
-    print(f"\nTotal: {len(dupes_by_uid)} UID-based + {len(dupes_by_content)} content-based duplicate group(s).")
+    print(f"\nTotal: {num_uid_groups} UID-based + {num_content_groups} content-based duplicate group(s).")
     print(f"Events to delete (keep one per group): {len(to_delete)}")
 
     if args.yes:
@@ -222,7 +231,46 @@ def main():
     else:
         print('Skipped deletion.')
 
-    return 1 if to_delete else 0
+    return 0
+
+
+def main() -> int:
+    args = parse_args()
+    creds = get_creds(args)
+
+    if not validate_creds(creds):
+        return 1
+
+    if args.backup_dir and not os.path.isdir(args.backup_dir):
+        print(f"Backup directory does not exist: {args.backup_dir}")
+        return 1
+
+    client, principal = connect(creds)
+    calendars = principal.calendars()
+
+    if not calendars:
+        print('No calendars found.')
+        return 1
+
+    cal = select_calendar(calendars, args.calendar)
+    if not cal:
+        return 1
+
+    print('Fetching events ...')
+    events = cal.events()
+    print(f"Found {len(events)} event(s).\n")
+
+    cal_name = cal.get_display_name() or 'calendar'
+    backup_events(events, args.backup_dir, cal_name)
+
+    found_any, dupes_by_uid, dupes_by_content, to_delete = find_duplicates(events)
+
+    if not found_any:
+        print('No duplicate events found.')
+        return 0
+
+    confirm_and_delete(to_delete, len(dupes_by_uid), len(dupes_by_content), args)
+    return 0
 
 
 if __name__ == '__main__':
