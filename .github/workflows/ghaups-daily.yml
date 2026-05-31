@@ -63,7 +63,7 @@ jobs:
           git config user.email "${bot_id}+${APP_SLUG}[bot]@users.noreply.github.com"
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git checkout -b ghaups/pin-actions
-          git add -A
+          git add .github/workflows/*
           git diff --cached --quiet && { echo "No changes to pin."; exit 0; }
           git commit -m 'chore: pin GitHub Actions to SHA refs'
           # Force-push so a stale branch from a previous run is refreshed in place.
