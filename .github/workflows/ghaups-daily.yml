@@ -1,0 +1,79 @@
+name: ghaups daily
+
+on:
+  schedule:
+    - cron: '25 22 * * *'
+  workflow_dispatch:
+
+# All writes (push + PR) use the GitHub App token generated below, which
+# carries the `workflows` permission the default GITHUB_TOKEN cannot have.
+# GITHUB_TOKEN only needs read access for checkout.
+permissions:
+  contents: read
+
+jobs:
+  pin-and-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      # ghaups is a Docker action with Trivy baked into its image, so there is
+      # no host Trivy to install. We only cache Trivy's vulnerability DB so it
+      # isn't re-downloaded from ghcr.io on every run.
+      - name: Cache Trivy vulnerability DB
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: .trivy-cache
+          key: trivy-db-${{ github.run_id }}
+          restore-keys: |
+            trivy-db-
+
+      - name: Pin actions and scan for vulnerabilities
+        uses: devopscoop/ghaups@0a76743c80ebab123a55ec25e2ed390be9cfbb16 # 0.1.1
+        with:
+          files: .github/workflows/*.yml
+        # The action mounts $GITHUB_WORKSPACE at /github/workspace, so point
+        # Trivy's cache there to share the restored DB with the cache step above.
+        env:
+          TRIVY_CACHE_DIR: /github/workspace/.trivy-cache
+
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.GHAUPS_APP_ID }}
+          private-key: ${{ secrets.GHAUPS_APP_PRIVATE_KEY }}
+          # Scope the token to only what the PR step needs, instead of inheriting
+          # the app installation's full permission set.
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+
+      - name: Create pull request
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          # Attribute the commit to the app's bot user (numeric id keeps the
+          # commit verified and linked to the bot account).
+          bot_id="$(gh api "/users/${APP_SLUG}[bot]" --jq .id)"
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${bot_id}+${APP_SLUG}[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git checkout -b ghaups/pin-actions
+          git add -A
+          git diff --cached --quiet && { echo "No changes to pin."; exit 0; }
+          git commit -m 'chore: pin GitHub Actions to SHA refs'
+          # Force-push so a stale branch from a previous run is refreshed in place.
+          git push --force origin ghaups/pin-actions
+          if [ -n "$(gh pr list --head ghaups/pin-actions --state open --json number --jq '.[].number')" ]; then
+            echo "PR already open for ghaups/pin-actions; updated its branch."
+          else
+            gh pr create \
+              --title 'chore: pin GitHub Actions to SHA refs' \
+              --body 'Automated daily pinning of GitHub Actions to commit SHAs.' \
+              --head ghaups/pin-actions \
+              --base main
+          fi
