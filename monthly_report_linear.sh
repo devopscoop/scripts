@@ -41,6 +41,9 @@ if [ "$DEFAULT_MONTH" = "00" ]; then
   DEFAULT_YEAR=$((DEFAULT_YEAR - 1))
 fi
 
+read -r -p "Output format (text/csv) [text]: " FORMAT
+FORMAT=${FORMAT:-text}
+
 read -r -p "Year [$DEFAULT_YEAR]: " YEAR
 YEAR=${YEAR:-$DEFAULT_YEAR}
 read -r -p "Month [$DEFAULT_MONTH]: " MONTH
@@ -148,6 +151,10 @@ echo "Closed in $YEAR-$MONTH: $count"
 echo ""
 
 if [ "$count" -gt 0 ]; then
-  echo '"Identifier","Title"'
-  echo "$all_issues" | jq -r '.[] | [.identifier, .title] | @csv'
+  if [ "$FORMAT" = "csv" ]; then
+    echo '"Identifier","Title"'
+    echo "$all_issues" | jq -r '.[] | [.identifier, .title] | @csv'
+  else
+    echo "$all_issues" | jq -r '.[] | "\(.identifier): \(.title)"'
+  fi
 fi
