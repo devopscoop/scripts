@@ -1,63 +1,106 @@
 #!/usr/bin/env python3
 """
-Simple script to remove duplicate entries from second YAML file that exist in first YAML file.
+Remove duplicate entries from second YAML file that exist in first YAML file.
+Processes at the line level so comments, quoting, and formatting are preserved.
 Usage: python yaml_dedup.py file1.yaml file2.yaml
 """
 
-import yaml
+import re
 import sys
 
-def deep_diff_remove(base_dict, override_dict):
-    """Remove entries from override_dict that have identical values in base_dict."""
-    result = {}
+from ruamel.yaml import YAML
 
-    for key, override_value in override_dict.items():
-        if key not in base_dict:
-            # Key doesn't exist in base, keep it
-            result[key] = override_value
-        elif isinstance(override_value, dict) and isinstance(base_dict[key], dict):
-            # Both are dictionaries, recursively check
-            nested_diff = deep_diff_remove(base_dict[key], override_value)
-            if nested_diff:  # Only include if there are differences
-                result[key] = nested_diff
-        elif override_value != base_dict[key]:
-            # Values are different, keep the override
-            result[key] = override_value
-        # If values are identical, don't include in result (remove duplicate)
 
-    return result
+def _collect_removed_paths(base, override, prefix=''):
+    """Return set of dotted key paths to remove from override.
+    Mutates *override* (a copy) to detect when parents become empty."""
+    paths = set()
+    keys_to_remove = []
+    for key, val in list(override.items()):
+        path = f"{prefix}.{key}" if prefix else str(key)
+        if key not in base:
+            continue
+        if isinstance(val, dict) and isinstance(base[key], dict):
+            sub = _collect_removed_paths(base[key], val, path)
+            paths.update(sub)
+            if not val:
+                keys_to_remove.append(key)
+        elif val == base[key]:
+            keys_to_remove.append(key)
+    for key in keys_to_remove:
+        path = f"{prefix}.{key}" if prefix else str(key)
+        paths.add(path)
+        del override[key]
+    return paths
+
+
+def _indent(line):
+    return len(line) - len(line.lstrip(' '))
+
+
+def filter_lines(lines, removed_paths):
+    out = []
+    stack = []  # (indent, key_name, skip_this_subtree)
+
+    for line in lines:
+        stripped = line.rstrip('\n\r')
+        indent = _indent(stripped)
+        content = stripped.lstrip(' ')
+
+        while stack and indent <= stack[-1][0]:
+            stack.pop()
+
+        current_skip = stack[-1][2] if stack else False
+
+        m = re.match(r'([\w./-]+):', content) if content else None
+
+        if m and not current_skip:
+            key = m.group(1)
+            path = f"{stack[-1][1]}.{key}" if stack else key
+            stack.append((indent, path, path in removed_paths))
+            current_skip = stack[-1][2]
+
+        if current_skip:
+            continue
+
+        out.append(stripped)
+
+    return out
+
 
 def main():
     if len(sys.argv) != 3:
         print('Usage: python yaml_dedup.py <base_file> <override_file>')
-        print('Example: python yaml_dedup.py file1.yaml file2.yaml')
         sys.exit(1)
 
-    base_file = sys.argv[1]
-    override_file = sys.argv[2]
-
-    # Load YAML files
+    yaml = YAML()
     try:
-        with open(base_file, 'r') as f:
-            base_data = yaml.safe_load(f) or {}
-
-        with open(override_file, 'r') as f:
-            override_data = yaml.safe_load(f) or {}
+        with open(sys.argv[1]) as f:
+            base = yaml.load(f) or {}
+        with open(sys.argv[2]) as f:
+            override = yaml.load(f) or {}
     except FileNotFoundError as e:
         print(f"Error: {e}")
         sys.exit(1)
-    except yaml.YAMLError as e:
+    except Exception as e:
         print(f"Error parsing YAML: {e}")
         sys.exit(1)
 
-    # Remove duplicates
-    unique_data = deep_diff_remove(base_data, override_data)
+    removed_paths = _collect_removed_paths(base, override)
 
-    # Save deduplicated file
-    with open(override_file, 'w') as f:
-        yaml.dump(unique_data, f, default_flow_style=False, sort_keys=True, indent=2)
+    if not removed_paths:
+        sys.exit(0)
 
-    print(f"  Removed {len(override_data) - len(unique_data)} duplicate top-level entries")
+    with open(sys.argv[2]) as f:
+        lines = f.readlines()
+
+    result = filter_lines(lines, removed_paths)
+
+    with open(sys.argv[2], 'w') as f:
+        f.write('\n'.join(result))
+        if result:
+            f.write('\n')
+
 
 if __name__ == '__main__':
     main()
