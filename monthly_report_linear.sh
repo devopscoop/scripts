@@ -1,6 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  cat <<EOF
+
+Generates a CSV-formatted list of Linear issues that were assigned to you and completed the previous month.
+
+This script is useful for freelancers. You can copy/paste the output into an invoice for your client.
+
+It prompts for the year and month (defaults to previous month). Requires LINEAR_API_KEY env var or interactive input.
+
+Example:
+
+Enter your Linear API key: lin_api_a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9
+Year [2026]:
+Month [05]:
+
+User: Jane Doe
+Closed in 2026-05: 2
+
+"Identifier","Title"
+"ABC-123","Fix login bug"
+"ABC-456","Update docs"
+
+EOF
+  exit 0
+fi
+
 LINEAR_API_KEY="${LINEAR_API_KEY:-}"
 API_URL="https://api.linear.app/graphql"
 
