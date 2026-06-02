@@ -47,12 +47,23 @@ def filter_lines(lines, removed_paths):
         indent = _indent(stripped)
         content = stripped.lstrip(' ')
 
+        # Blank/comment lines only affect the stack when inside a
+        # skipped subtree so the next key doesn't inherit the skip.
+        if not content or content.startswith('#'):
+            if stack and stack[-1][2]:
+                while stack and indent <= stack[-1][0]:
+                    stack.pop()
+            current_skip = stack[-1][2] if stack else False
+            if not current_skip:
+                out.append(stripped)
+            continue
+
         while stack and indent <= stack[-1][0]:
             stack.pop()
 
         current_skip = stack[-1][2] if stack else False
 
-        m = re.match(r'([\w./-]+):', content) if content else None
+        m = re.match(r'([\w./-]+):', content)
 
         if m and not current_skip:
             key = m.group(1)
