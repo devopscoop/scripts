@@ -15,7 +15,7 @@ jobs:
   pin-and-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
@@ -23,7 +23,7 @@ jobs:
       # no host Trivy to install. We only cache Trivy's vulnerability DB so it
       # isn't re-downloaded from ghcr.io on every run.
       - name: Cache Trivy vulnerability DB
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
         with:
           path: .trivy-cache
           key: trivy-db-${{ github.run_id }}
