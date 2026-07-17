@@ -1,5 +1,25 @@
 # AWS tools
 
+## Install required packages
+
+This repo ships package manifests that install every CLI tool its scripts use (`age`, `aws`, `aws-sso`, `bash`, `checkov`, `curl`, `gh`, `gpg`, `jq`, `python3`, `saml2aws`, `tenv` for `tofu`, `trivy`):
+
+- macOS, using [Homebrew](https://brew.sh/) and the `Brewfile`:
+
+  ```shell
+  brew bundle
+  ```
+
+- Arch Linux, using the `pkglist.txt`. This requires an AUR helper such as [yay](https://github.com/Jguer/yay) or [paru](https://github.com/Morganamilo/paru), because `aws-sso-cli-bin`, `saml2aws`, and `tenv-bin` are AUR packages. `checkov` isn't packaged for Arch at all — install it with `uv tool install checkov` or `pipx install checkov`:
+
+  ```shell
+  grep -vE '^(#|$)' pkglist.txt | yay -S --needed -
+  ```
+
+On other operating systems, install the tools listed above manually.
+
+The Python scripts also need libraries that package managers don't provide: `pip install caldav ruamel.yaml`.
+
 ## saml2aws
 
 Here are two helper scripts for saml2aws.
