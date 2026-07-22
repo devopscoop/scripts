@@ -1,0 +1,55 @@
+# Arch Linux package list for scripts — the pacman/AUR equivalent of the
+# Brewfile. Installs every CLI tool used or referenced by this repo.
+#
+# Requires an AUR helper (yay or paru) because aws-sso-cli-bin, saml2aws, and
+# tenv-bin are AUR packages; everything else is in the official repos.
+#
+# Usage:
+#   grep -vE '^(#|$)' pkglist.txt | yay -S --needed -
+#   grep -vE '^(#|$)' pkglist.txt | paru -S --needed -
+#
+# Not packaged for Arch:
+# - checkov (upgrade_opentofu_modules.py security gate): `uv tool install checkov`
+#   or `pipx install checkov`
+# Python library dependencies (not pacman packages): caldav
+# (caldav_delete_dupes.py) and ruamel.yaml (yaml_dedup.py),
+# e.g. `pip install caldav ruamel.yaml`.
+
+# age (includes age-keygen) — local keygen/decrypt for the dump-and-encrypt-secrets workflow
+age
+
+# AWS CLI v2 (`aws`) — SSO session/profile configuration (v2-only subcommands).
+# extra/aws-cli is the legacy v1.
+aws-cli-v2
+
+# AWS SSO CLI (`aws-sso`) — AUR; recommended replacement for the deprecated
+# aws_configure_all_sso.sh script
+aws-sso-cli-bin
+
+# bash — all shell scripts use `#!/usr/bin/env bash`
+bash
+
+# curl — monthly_report_linear.sh posts to the Linear GraphQL API
+curl
+
+# gh — GitHub CLI, used by github_actions/image-retention-policy.sh
+github-cli
+
+# gnupg (`gpg`) — verifies provider SHASUMS signatures in upgrade_opentofu_modules.py
+gnupg
+
+# jq — JSON parsing across several scripts
+jq
+
+# python — the .py scripts use `#!/usr/bin/env python3`
+python
+
+# saml2aws — AUR; Okta/DUO SAML to AWS credential process
+saml2aws
+
+# tenv — AUR; provides `tofu` for upgrade_opentofu_modules.py (which probes
+# for tofu, then terraform). Do NOT install opentofu directly.
+tenv-bin
+
+# trivy — module misconfiguration scanner in upgrade_opentofu_modules.py's security gate
+trivy
