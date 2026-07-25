@@ -20,10 +20,8 @@ jobs:
 
     runs-on: ubuntu-latest
     # This workflow fires automatically on every PR, so it is scoped as tightly
-    # as it can be while still functioning. pull-requests:write is required:
-    # the action mints its installation token with pull_requests write (see
-    # src/github/token.ts), and without it the job runs, bills, and silently
-    # posts nothing. contents stays read, so this job can comment on a PR but
+    # as it can be while still functioning. pull-requests:write is required to
+    # post comments; contents stays read, so this job can comment on a PR but
     # cannot modify code or merge. Note id-token:write is also a write scope:
     # it can mint an OIDC token, so any cloud role that trusts this
     # repository's OIDC subject is reachable from this job.
@@ -44,18 +42,40 @@ jobs:
         uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # UNPINNED, and it cannot currently be pinned. plugin_marketplaces
-          # rejects any value not ending in .git, so no ref fits; and checking
-          # the marketplace out separately at a SHA and passing a local path
-          # fails too, because Claude Code reserves the name
-          # 'claude-code-plugins' for GitHub sources in the anthropics org.
-          # This clones the default branch at HEAD on every run. Pinning it
-          # would require mirroring the marketplace under a different name.
-          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
-          plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
-          # Pin the model and effort level so CI does not drift when the CLI
-          # default changes.
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://code.claude.com/docs/en/cli-reference for available options
-          claude_args: '--model claude-opus-5 --effort xhigh'
+
+          # The code-review plugin is deliberately NOT used here. It reports via
+          # the ReportFindings tool, and claude-code-action has no handling for
+          # ReportFindings at all: it only publishes comments that arrive via
+          # mcp__github_inline_comment__create_inline_comment or gh pr comment.
+          # With the plugin the job reviews the code and reports into a tool
+          # nothing is listening to, costing ~$1 per PR and posting nothing.
+          # Dropping it also removes the unpinnable marketplace clone.
+          prompt: |
+            Review this pull request.
+
+            Focus on correctness bugs, security implications, and anything that
+            would break at runtime. Skip pure style and naming preferences.
+
+            The PR branch is already checked out in the working directory.
+
+            Use `mcp__github_inline_comment__create_inline_comment` (with
+            `confirmed: true`) for issues tied to specific lines.
+            Use `gh pr comment` for a short top-level summary.
+            Only post GitHub comments - do not return review text as a message,
+            it will not reach anyone.
+            If you find nothing worth raising, post a brief top-level comment
+            saying so, so the run is distinguishable from a silent failure.
+
+          # The allowlist is REQUIRED, not optional. Passing a prompt puts the
+          # action in agent mode, where allowed tools come only from claude_args
+          # (tag mode, used by claude.yml, builds its own list instead). The
+          # inline comment MCP server is registered only when the allowlist
+          # contains an mcp__github_inline_comment__ entry, so without this the
+          # job reviews the code, finds no way to report, and posts nothing.
+          # Scoped to read and comment: gh pr merge and gh pr create are
+          # deliberately absent.
+          # See https://github.com/anthropics/claude-code-action/blob/main/docs/solutions.md
+          claude_args: >-
+            --model claude-opus-5
+            --effort xhigh
+            --allowed-tools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
