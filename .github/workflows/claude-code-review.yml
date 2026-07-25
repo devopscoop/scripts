@@ -19,26 +19,43 @@ jobs:
     #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
 
     runs-on: ubuntu-latest
+    # This workflow fires automatically on every PR, so it is scoped as tightly
+    # as it can be while still functioning. pull-requests:write is required:
+    # the action mints its installation token with pull_requests write (see
+    # src/github/token.ts), and without it the job runs, bills, and silently
+    # posts nothing. contents stays read, so this job can comment on a PR but
+    # cannot modify code or merge. Note id-token:write is also a write scope:
+    # it can mint an OIDC token, so any cloud role that trusts this
+    # repository's OIDC subject is reachable from this job.
     permissions:
       contents: read
-      pull-requests: read
+      pull-requests: write
       issues: read
       id-token: write
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 1
 
       - name: Run Claude Code Review
         id: claude-review
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # UNPINNED, and it cannot currently be pinned. plugin_marketplaces
+          # rejects any value not ending in .git, so no ref fits; and checking
+          # the marketplace out separately at a SHA and passing a local path
+          # fails too, because Claude Code reserves the name
+          # 'claude-code-plugins' for GitHub sources in the anthropics org.
+          # This clones the default branch at HEAD on every run. Pinning it
+          # would require mirroring the marketplace under a different name.
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
           prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          # Pin the model and effort level so CI does not drift when the CLI
+          # default changes.
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
-
+          claude_args: '--model claude-opus-5 --effort xhigh'
