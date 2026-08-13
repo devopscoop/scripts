@@ -20,7 +20,8 @@ brew "aws-sso-cli"
 # bash - all shell scripts use `#!/usr/bin/env bash`
 brew "bash"
 
-# checkov - module misconfiguration scanner in upgrade_opentofu_modules.py's security gate
+# checkov - optional advisory scanner for upgrade_opentofu_modules.py
+# (opt-in via --scanners trivy,checkov)
 brew "checkov"
 
 # curl - monthly_report_linear.sh posts to the Linear GraphQL API
@@ -45,5 +46,5 @@ brew "saml2aws"
 # tofu, then terraform). Do NOT install opentofu directly.
 brew "tenv"
 
-# trivy - module misconfiguration scanner in upgrade_opentofu_modules.py's security gate
+# trivy - advisory misconfiguration scanner in upgrade_opentofu_modules.py's security gate
 brew "trivy"
