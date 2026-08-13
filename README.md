@@ -10,7 +10,7 @@ This repo ships package manifests that install every CLI tool its scripts use (`
   brew bundle
   ```
 
-- Arch Linux, using the `pkglist.txt`. This requires an AUR helper such as [yay](https://github.com/Jguer/yay) or [paru](https://github.com/Morganamilo/paru), because `aws-sso-cli-bin`, `saml2aws`, and `tenv-bin` are AUR packages. `checkov` isn't packaged for Arch at all — install it with `uv tool install checkov` or `pipx install checkov`:
+- Arch Linux, using the `pkglist.txt`. This requires an AUR helper such as [yay](https://github.com/Jguer/yay) or [paru](https://github.com/Morganamilo/paru), because `aws-sso-cli-bin`, `saml2aws`, and `tenv-bin` are AUR packages. `checkov` (only needed for the opt-in `--scanners trivy,checkov`) isn't packaged for Arch at all — install it with `uv tool install checkov` or `pipx install checkov`:
 
   ```shell
   grep -vE '^(#|$)' pkglist.txt | yay -S --needed -

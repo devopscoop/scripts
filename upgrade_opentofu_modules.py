@@ -21,19 +21,24 @@ Security scan gate:
   scan is NOT written, even with --write. Use --skip-scan to bypass it.
 
     - Modules (namespace/name/provider) are downloaded at the target version
-      with `tofu get` (falls back to `terraform get`) and scanned with Trivy and
-      Checkov, plus a built-in check for dangerous constructs (local-exec /
-      remote-exec provisioners, `data "external"`, `data "http"`) that are the
-      usual code-execution / exfiltration vectors in module source.
+      with `tofu get` (falls back to `terraform get`). Directories consumers
+      never deploy (examples/, tests/, wrappers/) are pruned, then the source
+      is checked for dangerous constructs (local-exec / remote-exec
+      provisioners, `data "external"`, `data "http"`) -- the realistic
+      code-execution / exfiltration vectors in module source. These block.
+    - Trivy (and Checkov, if enabled with --scanners trivy,checkov) report
+      misconfigurations as advisories only; they never block. Their findings
+      describe the module's design, which the currently pinned version shares,
+      so refusing the upgrade would not make anything safer. Findings at or
+      above --severity are printed; the rest are summarized as a count.
     - Providers (namespace/name) are compiled binaries, so they cannot be
       code-scanned. Instead the registry SHASUMS file for the target version is
       GPG-verified against the publisher's signing key, and the published
       checksum for this platform is confirmed to be in that signed manifest.
+      A verification failure blocks.
 
-  Findings at or above --severity (default CRITICAL) block the upgrade; anything
-  below is printed as advisory. Dangerous constructs and provider verification
-  failures always block. A missing tool (tofu/trivy/checkov/gpg) fails closed
-  (blocks) -- install it or pass --skip-scan.
+  A missing tool (tofu/trivy/gpg) or a failed download is an *error*, and
+  errors fail closed (block) -- install the tool or pass --skip-scan.
 
 Notes:
   - Only exact version pins (e.g. "6.6.1") are updated. Lines with a constraint
@@ -41,6 +46,11 @@ Notes:
     them with an exact version would change their semantics.
   - "Latest" means the newest published version, which may be a major-version
     bump with breaking changes. Review the dry-run output before --write.
+  - After --write, `tofu init -backend=false -upgrade` runs automatically so
+    the lockfiles match the new pins. Root modules are located by walking up
+    from each changed file to the first directory that holds a
+    .terraform.lock.hcl (falling back to the current directory). --skip-init
+    disables this and prints the command to run instead.
   - The scan is defense-in-depth, not proof of safety: Trivy/Checkov find
     misconfigurations (not malware), and the provider GPG key is the one the
     registry vouches for. The provider binary's own checksum is still enforced
@@ -88,6 +98,11 @@ DANGEROUS_CONSTRUCTS = [
 # Command-line tools commonly used for exfiltration; reported as advisory since
 # they also appear in legitimate scripts and comments.
 SUSPICIOUS_CMD_RE = re.compile(r'\b(curl|wget|nc|ncat|Invoke-WebRequest)\b')
+
+# Directories in downloaded module source that consumers never deploy. Pruned
+# before scanning: demo/test code dominates the findings otherwise, and Trivy
+# even follows an example's module references into unrelated modules.
+NON_DEPLOYED_DIRS = {'examples', 'example', 'tests', 'test', 'wrappers'}
 
 # Cache scan verdicts so a module/provider referenced many times is scanned once.
 _scan_cache: dict[str, dict] = {}
@@ -175,6 +190,9 @@ def _download_module(registry_path: str, version: str) -> Path:
         detail = (proc.stderr or proc.stdout or '').strip().splitlines()
         raise ScanError(f"`{tofu} get` failed for {registry_path} {version}: "
                         f"{detail[-1] if detail else 'no module downloaded'}")
+    for sub in [p for p in modules_dir.rglob('*')
+                if p.is_dir() and p.name in NON_DEPLOYED_DIRS]:
+        shutil.rmtree(sub, ignore_errors=True)
     return modules_dir
 
 
@@ -199,6 +217,12 @@ def scan_dangerous_constructs(root: Path) -> dict:
     return {'blocking': blocking, 'advisory': advisory, 'errors': []}
 
 
+# Trivy and Checkov find misconfigurations, not malware. Their findings
+# describe the module's design -- which the currently pinned version shares --
+# so they never block an upgrade: blocking would just train people to reach for
+# --skip-scan, which also disables the checks that matter. Findings at/above
+# the threshold are printed as advisories; the rest are only counted.
+
 def run_trivy(root: Path, threshold: str) -> dict:
     proc = _run(['trivy', 'config', '--quiet', '--format', 'json', str(root)])
     if proc.returncode not in (0, 1):  # 1 == findings present with default exit code
@@ -207,14 +231,16 @@ def run_trivy(root: Path, threshold: str) -> dict:
         data = json.loads(proc.stdout or '{}')
     except json.JSONDecodeError as e:
         raise ScanError(f"could not parse trivy output: {e}")
-    blocking, advisory = [], []
+    advisory, muted = [], 0
     for result in data.get('Results') or []:
         target = result.get('Target', '')
         for mc in result.get('Misconfigurations') or []:
             sev = mc.get('Severity', 'UNKNOWN')
-            line = f"[trivy {sev}] {mc.get('ID', '?')} {mc.get('Title', '')} ({target})"
-            (blocking if _at_or_above(sev, threshold) else advisory).append(line)
-    return {'blocking': blocking, 'advisory': advisory, 'errors': []}
+            if _at_or_above(sev, threshold):
+                advisory.append(f"[trivy {sev}] {mc.get('ID', '?')} {mc.get('Title', '')} ({target})")
+            else:
+                muted += 1
+    return {'blocking': [], 'advisory': advisory, 'muted': muted, 'errors': []}
 
 
 def run_checkov(root: Path, threshold: str) -> dict:
@@ -227,20 +253,24 @@ def run_checkov(root: Path, threshold: str) -> dict:
         raise ScanError(f"could not parse checkov output: {e}")
     # Checkov emits either a single result object or a list (one per framework).
     reports = data if isinstance(data, list) else [data]
-    blocking, advisory = [], []
+    advisory, muted = [], 0
     for report in reports:
         for chk in (report.get('results') or {}).get('failed_checks') or []:
-            sev = chk.get('severity')  # often null in OSS checkov
-            where = f"{chk.get('file_path', '')}:{chk.get('resource', '')}"
-            line = f"[checkov {sev or 'n/a'}] {chk.get('check_id', '?')} {chk.get('check_name', '')} ({where})"
-            # Block only when checkov reports a severity at/above threshold;
-            # severity-less findings are advisory to keep the gate usable.
-            (blocking if _at_or_above(sev, threshold) else advisory).append(line)
-    return {'blocking': blocking, 'advisory': advisory, 'errors': []}
+            # Severity is usually null in OSS checkov, which ranks below every
+            # threshold, so those findings land in the muted count.
+            sev = chk.get('severity')
+            if _at_or_above(sev, threshold):
+                where = f"{chk.get('file_path', '')}:{chk.get('resource', '')}"
+                advisory.append(f"[checkov {sev}] {chk.get('check_id', '?')} "
+                                f"{chk.get('check_name', '')} ({where})")
+            else:
+                muted += 1
+    return {'blocking': [], 'advisory': advisory, 'muted': muted, 'errors': []}
 
 
 def scan_module(registry_path: str, version: str, scanners: list[str], threshold: str) -> dict:
     blocking, advisory, errors = [], [], []
+    muted = 0
     src = _download_module(registry_path, version)
     try:
         steps = [('dangerous-constructs', scan_dangerous_constructs)]
@@ -254,11 +284,12 @@ def scan_module(registry_path: str, version: str, scanners: list[str], threshold
                 out = step(src)
                 blocking += out['blocking']
                 advisory += out['advisory']
+                muted += out.get('muted', 0)
             except ScanError as e:
                 errors.append(str(e))
     finally:
         shutil.rmtree(src.parent.parent, ignore_errors=True)  # the tempdir root
-    return {'blocking': blocking, 'advisory': advisory, 'errors': errors}
+    return {'blocking': blocking, 'advisory': advisory, 'muted': muted, 'errors': errors}
 
 
 def _platform() -> tuple[str, str]:
@@ -402,8 +433,14 @@ def update_file(path: Path, opts: argparse.Namespace, stats: dict) -> None:
         # Security gate: scan the target version before reporting/applying it.
         if not opts.skip_scan:
             verdict = scan_gate(src, new, opts)
-            for note in verdict['advisory']:
-                print(f"      · {note}")
+            # Advisories print once per source+version; cached verdicts for the
+            # other submodules of the same registry module stay quiet.
+            if not verdict.get('shown'):
+                verdict['shown'] = True
+                for note in verdict['advisory']:
+                    print(f"      · {note}")
+                if verdict.get('muted'):
+                    print(f"      · {verdict['muted']} finding(s) below {opts.severity} not shown")
             if not verdict['ok']:
                 stats['blocked'] += 1
                 print(f"  {src}: {old} -> {new}  BLOCKED by security scan")
@@ -443,6 +480,52 @@ def update_file(path: Path, opts: argparse.Namespace, stats: dict) -> None:
 
     if changed and not dry_run:
         path.write_text(''.join(lines))
+        stats['changed_files'].append(path)
+
+
+def refresh_lockfiles(changed_files: list[Path]) -> int:
+    """Run `tofu init -backend=false -upgrade` so lockfiles match the new pins.
+
+    Root modules are found by walking up from each changed file to the current
+    directory and taking the first directory that already holds a
+    .terraform.lock.hcl; with none found, the current directory is used (the
+    same place the manual command this replaces would have run). Returns the
+    number of directories where init failed.
+    """
+    try:
+        tofu = _tofu_bin()
+    except ScanError as e:
+        print(f"! cannot update lockfiles: {e}", file=sys.stderr)
+        return 1
+
+    cwd = Path('.').resolve()
+    roots = set()
+    for f in changed_files:
+        d = f.resolve().parent
+        while True:
+            if (d / '.terraform.lock.hcl').is_file():
+                roots.add(d)
+                break
+            if d == cwd or d.parent == d:
+                break
+            d = d.parent
+    if not roots:
+        roots = {cwd}
+
+    failures = 0
+    for root in sorted(roots):
+        rel = os.path.relpath(root)
+        print(f"\nUpdating lockfile in {rel} ({tofu} init -backend=false -upgrade)...")
+        proc = _run([tofu, 'init', '-backend=false', '-upgrade', '-input=false'],
+                    cwd=str(root))
+        if proc.returncode != 0:
+            failures += 1
+            detail = (proc.stderr or proc.stdout or '').strip().splitlines()
+            print(f"  ! init failed in {rel}: {detail[-1] if detail else 'unknown error'}",
+                  file=sys.stderr)
+        else:
+            print(f"  lockfile updated in {rel}")
+    return failures
 
 
 def main() -> None:
@@ -460,12 +543,18 @@ def main() -> None:
         help='bypass the security scan gate (faster, but applies upgrades unscanned)'
     )
     parser.add_argument(
-        '--scanners', default='trivy,checkov',
-        help='comma-separated module scanners to run (default: trivy,checkov)'
+        '--skip-init', action='store_true',
+        help="don't run `tofu init -backend=false -upgrade` after writing changes"
+    )
+    parser.add_argument(
+        '--scanners', default='trivy',
+        help='comma-separated advisory misconfiguration scanners: trivy, checkov '
+             '(default: trivy)'
     )
     parser.add_argument(
         '--severity', default='CRITICAL', choices=list(SEVERITY_RANK),
-        help='scan findings at or above this severity block the upgrade (default: CRITICAL)'
+        help='print misconfiguration advisories at or above this severity '
+             '(default: CRITICAL); they never block the upgrade'
     )
     args = parser.parse_args()
     args.scanners = [s.strip().lower() for s in args.scanners.split(',') if s.strip()]
@@ -477,7 +566,7 @@ def main() -> None:
         print(f"No .tf files found matching '{args.pattern}'")
         sys.exit(1)
 
-    stats = {'updates': 0, 'failures': 0, 'blocked': 0}
+    stats = {'updates': 0, 'failures': 0, 'blocked': 0, 'changed_files': []}
     for tf in files:
         print(tf)
         update_file(tf, args, stats)
@@ -486,14 +575,22 @@ def main() -> None:
     print(f"\n{stats['updates']} version(s) {mode}.")
     if dry_run and stats['updates']:
         print('Re-run with --write to apply.')
+
+    init_failures = 0
     if not dry_run and stats['updates']:
-        print('Run "tofu init -backend=false -upgrade" to update the lockfiles.')
+        if args.skip_init:
+            print('Run "tofu init -backend=false -upgrade" to update the lockfiles.')
+        else:
+            init_failures = refresh_lockfiles(stats['changed_files'])
+
     if stats['blocked']:
         print(f"{stats['blocked']} upgrade(s) BLOCKED by the security scan "
               f"(review above, or --skip-scan to override).", file=sys.stderr)
     if stats['failures']:
         print(f"{stats['failures']} registry lookup(s) failed.", file=sys.stderr)
-    if stats['failures'] or stats['blocked']:
+    if init_failures:
+        print(f"{init_failures} lockfile update(s) failed.", file=sys.stderr)
+    if stats['failures'] or stats['blocked'] or init_failures:
         sys.exit(2)
 
 

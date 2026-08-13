@@ -36,9 +36,12 @@ this repo: `LINEAR_API_KEY` (`monthly_report_linear.sh`), `CALDAV_URL` /
 (`caldav_delete_dupes.py`), and `SAML2AWS_USERNAME` / `SAML2AWS_PASSWORD` /
 `idp_provider` / `mfa` / `url` (`saml2aws_configure.sh`).
 
-After `upgrade_opentofu_modules.py --write`, lockfiles need
-`tofu init -backend=false -upgrade`. The script exits 2 if any upgrade was
-blocked by the scan gate or any registry lookup failed.
+After `upgrade_opentofu_modules.py --write`, the script itself runs
+`tofu init -backend=false -upgrade` in each affected root module (found by
+walking up from every changed file to the nearest `.terraform.lock.hcl`, else
+the current directory); `--skip-init` restores the old print-the-command
+behavior. It exits 2 if any upgrade was blocked by the scan gate, any registry
+lookup failed, or any lockfile update failed.
 
 ## Architecture
 
@@ -55,14 +58,19 @@ interact:
    alone, because replacing them would change their semantics.
 2. **A fail-closed security gate** on the *target* version, run before an upgrade
    is even reported in a dry run. Modules are downloaded with `tofu get` (falling
-   back to `terraform`) and scanned by Trivy, Checkov, and a built-in grep for
-   code-execution constructs (`local-exec`/`remote-exec` provisioners,
-   `data "external"`, `data "http"`), which always block. Providers are compiled
-   binaries and cannot be code-scanned, so instead the registry SHASUMS manifest
-   is GPG-verified against the publisher key and this platform's checksum is
-   confirmed to be inside the signed manifest. A missing tool or a failed
-   download is an *error*, and errors block — that is deliberate. `--skip-scan`
-   is the only bypass.
+   back to `terraform`), pruned of directories consumers never deploy
+   (`examples/`, `tests/`, `wrappers/` — demo code dominated the findings, and
+   Trivy follows an example's module references into unrelated modules), then
+   grepped for code-execution constructs (`local-exec`/`remote-exec`
+   provisioners, `data "external"`, `data "http"`), which always block. Trivy
+   (default) and Checkov (opt-in via `--scanners trivy,checkov`) are advisory
+   only and never block: they find design misconfigurations the currently
+   pinned version shares, so blocking would only train people to reach for
+   `--skip-scan`. Providers are compiled binaries and cannot be code-scanned,
+   so instead the registry SHASUMS manifest is GPG-verified against the
+   publisher key and this platform's checksum is confirmed to be inside the
+   signed manifest. A missing tool or a failed download is an *error*, and
+   errors block — that is deliberate. `--skip-scan` is the only bypass.
 3. **Two caches** (`_version_cache`, `_scan_cache`) keyed by registry path, so a
    module referenced across many files is fetched and scanned once. Keep new
    lookups behind them.
