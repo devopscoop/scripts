@@ -9,6 +9,7 @@
 #     sandbox home (~/.sandbox-home) for agent state -- nothing else
 #   * gets no access to ~/.aws, ~/.kube, ~/.ssh, ~/.gnupg, your real ~/.claude,
 #     or any other host dir, and no Docker socket
+#   * runs with all Linux capabilities dropped and no-new-privileges
 #
 # so the agent has the full DevOps toolset but none of your credentials and can
 # only touch the project you launch it in.
@@ -57,6 +58,9 @@ fi
 # the host so it is owned by you and the non-root container user can write to it.
 SANDBOX_HOME="${SANDBOX_HOME:-${HOME}/.sandbox-home}"
 mkdir -p "${SANDBOX_HOME}"
+# It holds the agent's auth token; keep it off-limits to other users on a
+# shared host (mkdir uses the umask, which may leave it group/world-readable).
+chmod 700 "${SANDBOX_HOME}"
 
 # Mount the project under its own name rather than a fixed /work: with a shared
 # HOME, Claude Code keys per-project state (trust, history, --resume) on the
@@ -66,6 +70,7 @@ PROJECT="$(basename "${PWD}")"
 exec ${DOCKER} run --rm -it \
   --user "$(id -u):$(id -g)" \
   --security-opt no-new-privileges \
+  --cap-drop ALL \
   -v "${SANDBOX_HOME}:/sandbox-home" \
   -v "${PWD}:/work/${PROJECT}" \
   -w "/work/${PROJECT}" \

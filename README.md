@@ -22,7 +22,7 @@ The Python scripts also need libraries that package managers don't provide: `pip
 
 ## ai_sandbox.sh
 
-Runs [Claude Code](https://claude.com/claude-code) or [OpenCode](https://opencode.ai) inside the [devopscoop workstation image](https://github.com/devopscoop/workstation) as a throwaway sandbox: the agent runs as your own UID/GID, sees only the directory you launch it in (mounted at `/work/<dirname>`) plus a shared sandbox home, and gets no access to `~/.aws`, `~/.kube`, `~/.ssh`, `~/.gnupg`, your real `~/.claude`, or the Docker socket. Run it from a project root:
+Runs [Claude Code](https://claude.com/claude-code) or [OpenCode](https://opencode.ai) inside the [devopscoop workstation image](https://github.com/devopscoop/workstation) as a throwaway sandbox: the agent runs as your own UID/GID with all Linux capabilities dropped and `no-new-privileges`, sees only the directory you launch it in (mounted at `/work/<dirname>`) plus a shared sandbox home, and gets no access to `~/.aws`, `~/.kube`, `~/.ssh`, `~/.gnupg`, your real `~/.claude`, or the Docker socket. Run it from a project root:
 
 ```bash
 ./ai_sandbox.sh                  # Claude Code (default)
@@ -42,7 +42,7 @@ It honors a few environment variables:
 Notes:
 
 - **Authentication.** Either export `ANTHROPIC_API_KEY`, or log in interactively the first time — the login is stored under `~/.sandbox-home/` on the host and persists across runs *and* projects. It is deliberately **not** your real `~/.claude` (the sandbox must never touch your laptop's config; on macOS the OAuth token lives in the Keychain anyway).
-- **Sharing trade-off.** Every project's sandbox shares `~/.sandbox-home`, so an agent in one project can read state (including credentials) an agent left there from another project. For an untrusted project, run with its own `SANDBOX_HOME`.
+- **Sharing trade-off.** Every project's sandbox shares `~/.sandbox-home`, so an agent in one project can read state (including credentials) an agent left there from another project. For an untrusted project, run with its own `SANDBOX_HOME`. The script `chmod 700`s the directory so other users on a shared host can't read the stored credentials.
 - **Network is open** (the agents need it to reach their APIs); only the filesystem is sandboxed.
 - The Docker CLI is in the image but the socket is intentionally **not** mounted, so the agent can't reach your host's Docker daemon.
 - Running as a non-root UID relies on Claude Code being installed under `/opt/claude` (world-readable) rather than root's home; this is handled in the workstation `Dockerfile`. If you run an older image that installed it under `/root`, `claude` will fail with a permission error — rebuild it.
@@ -53,9 +53,10 @@ Notes:
 The image is pulled automatically on first run (to build it locally instead, see the [workstation repo](https://github.com/devopscoop/workstation)). The script only wraps one `docker run` — the equivalent one-liner, if you'd rather not install it (drop `sudo` on macOS/colima):
 
 ```bash
-mkdir -p ~/.sandbox-home && sudo docker run --rm -it \
+mkdir -p ~/.sandbox-home && chmod 700 ~/.sandbox-home && sudo docker run --rm -it \
   --user "$(id -u):$(id -g)" \
   --security-opt no-new-privileges \
+  --cap-drop ALL \
   -v "$HOME/.sandbox-home:/sandbox-home" \
   -v "$PWD:/work/$(basename "$PWD")" -w "/work/$(basename "$PWD")" \
   -e HOME=/sandbox-home -e USER="$(id -un)" \
