@@ -33,8 +33,10 @@ testing against it.
 Credentials come from flags or environment variables, never from config files in
 this repo: `LINEAR_API_KEY` (`monthly_report_linear.sh`), `CALDAV_URL` /
 `CALDAV_USERNAME` / `CALDAV_PASSWORD` or `--password-file`
-(`caldav_delete_dupes.py`), and `SAML2AWS_USERNAME` / `SAML2AWS_PASSWORD` /
-`idp_provider` / `mfa` / `url` (`saml2aws_configure.sh`).
+(`caldav_delete_dupes.py`), `SAML2AWS_USERNAME` / `SAML2AWS_PASSWORD` /
+`idp_provider` / `mfa` / `url` (`saml2aws_configure.sh`), and optionally
+`ANTHROPIC_API_KEY` (`ai_sandbox.sh`, forwarded into the container as an env
+var, never a mounted file).
 
 After `upgrade_opentofu_modules.py --write`, the script itself runs
 `tofu init -backend=false -upgrade` in each affected root module (found by
@@ -88,6 +90,21 @@ The override file is never round-tripped through a YAML dumper, because that
 reflows comments, quoting, and spacing. A previous version lost comments; that
 was the bug the rewrite fixed. Any change here must keep comments and formatting
 of surviving lines byte-identical.
+
+### ai_sandbox.sh
+
+Runs Claude Code or OpenCode inside the devopscoop workstation image as a
+throwaway sandbox. The isolation flags ARE the feature — preserve them when
+editing: your own uid/gid, `--security-opt no-new-privileges`, only `$PWD`
+mounted, no Docker socket, and a shared `~/.sandbox-home` as the container HOME
+instead of the real `~/.claude`. Never mount the host's real Claude config:
+agent-written settings hooks would execute on the host later, and on macOS the
+OAuth token lives in the Keychain anyway, so it wouldn't even carry auth. The
+project mounts at `/work/<dirname>` rather than a fixed `/work` because Claude
+Code keys per-project state (trust, history, `--resume`) on the path. The
+non-root `--user` only works because the image installs Claude Code under
+`/opt/claude` (world-readable) — that coupling is documented in the workstation
+repo's AGENTS.md.
 
 ### github_actions/ — templates for *other* repos
 

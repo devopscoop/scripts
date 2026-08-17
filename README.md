@@ -2,7 +2,7 @@
 
 ## Install required packages
 
-This repo ships package manifests that install every CLI tool its scripts use (`age`, `aws`, `aws-sso`, `bash`, `checkov`, `curl`, `gh`, `gpg`, `jq`, `python3`, `saml2aws`, `tenv` for `tofu`, `trivy`):
+This repo ships package manifests that install every CLI tool its scripts use (`age`, `aws`, `aws-sso`, `bash`, `checkov`, `curl`, `docker` plus `colima` on macOS, `gh`, `gpg`, `jq`, `python3`, `saml2aws`, `tenv` for `tofu`, `trivy`):
 
 - macOS, using [Homebrew](https://brew.sh/) and the `Brewfile`:
 
@@ -19,6 +19,32 @@ This repo ships package manifests that install every CLI tool its scripts use (`
 On other operating systems, install the tools listed above manually.
 
 The Python scripts also need libraries that package managers don't provide: `pip install caldav ruamel.yaml`.
+
+## ai_sandbox.sh
+
+Runs [Claude Code](https://claude.com/claude-code) or [OpenCode](https://opencode.ai) inside the [devopscoop workstation image](https://github.com/devopscoop/workstation) as a throwaway sandbox: the agent runs as your own UID/GID, sees only the directory you launch it in (mounted at `/work/<dirname>`) plus a shared sandbox home, and gets no access to `~/.aws`, `~/.kube`, `~/.ssh`, `~/.gnupg`, your real `~/.claude`, or the Docker socket. Run it from a project root:
+
+```bash
+./ai_sandbox.sh                  # Claude Code (default)
+./ai_sandbox.sh opencode         # OpenCode
+./ai_sandbox.sh claude --resume  # extra args pass through to the agent
+```
+
+It honors a few environment variables:
+
+| Variable            | Default        | Purpose                                                                                 |
+| ------------------- | -------------- | --------------------------------------------------------------------------------------- |
+| `IMAGE`             | `ghcr.io/devopscoop/workstation:main-aws` | Image to run; override with a local build or a different CSP variant.         |
+| `DOCKER`            | `docker` on macOS, `sudo docker` on Linux | How to invoke Docker; on Linux set `DOCKER=docker` if you run rootless or are in the `docker` group. |
+| `SANDBOX_HOME`      | `~/.sandbox-home` | Host directory holding agent state (auth, config, history), mounted as the container HOME. Shared across projects so you log in once; set `SANDBOX_HOME="$PWD/.sandbox-home"` to isolate one project's agent state instead. |
+| `ANTHROPIC_API_KEY` | *(unset)*      | If set in your shell, it's forwarded into the container (as an env var, **not** a mounted file) so Claude Code is authenticated without an interactive login. |
+
+Notes:
+
+- **Authentication.** Either export `ANTHROPIC_API_KEY`, or log in interactively the first time — the login is stored under `~/.sandbox-home/` on the host and persists across runs *and* projects. It is deliberately **not** your real `~/.claude` (the sandbox must never touch your laptop's config; on macOS the OAuth token lives in the Keychain anyway).
+- **Sharing trade-off.** Every project's sandbox shares `~/.sandbox-home`, so an agent in one project can read state (including credentials) an agent left there from another project. For an untrusted project, run with its own `SANDBOX_HOME`.
+- **Network is open** (the agents need it to reach their APIs); only the filesystem is sandboxed.
+- On macOS, start the Docker engine first: `colima start`.
 
 ## saml2aws
 

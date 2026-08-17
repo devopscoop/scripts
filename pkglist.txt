@@ -32,6 +32,9 @@ bash
 # curl — monthly_report_linear.sh posts to the Linear GraphQL API
 curl
 
+# docker — ai_sandbox.sh runs the devopscoop workstation image with it
+docker
+
 # gh — GitHub CLI, used by github_actions/image-retention-policy.sh
 github-cli
 
