@@ -44,7 +44,25 @@ Notes:
 - **Authentication.** Either export `ANTHROPIC_API_KEY`, or log in interactively the first time — the login is stored under `~/.sandbox-home/` on the host and persists across runs *and* projects. It is deliberately **not** your real `~/.claude` (the sandbox must never touch your laptop's config; on macOS the OAuth token lives in the Keychain anyway).
 - **Sharing trade-off.** Every project's sandbox shares `~/.sandbox-home`, so an agent in one project can read state (including credentials) an agent left there from another project. For an untrusted project, run with its own `SANDBOX_HOME`.
 - **Network is open** (the agents need it to reach their APIs); only the filesystem is sandboxed.
+- The Docker CLI is in the image but the socket is intentionally **not** mounted, so the agent can't reach your host's Docker daemon.
+- Running as a non-root UID relies on Claude Code being installed under `/opt/claude` (world-readable) rather than root's home; this is handled in the workstation `Dockerfile`. If you run an older image that installed it under `/root`, `claude` will fail with a permission error — rebuild it.
 - On macOS, start the Docker engine first: `colima start`.
+
+### Without the script
+
+The image is pulled automatically on first run (to build it locally instead, see the [workstation repo](https://github.com/devopscoop/workstation)). The script only wraps one `docker run` — the equivalent one-liner, if you'd rather not install it (drop `sudo` on macOS/colima):
+
+```bash
+mkdir -p ~/.sandbox-home && sudo docker run --rm -it \
+  --user "$(id -u):$(id -g)" \
+  --security-opt no-new-privileges \
+  -v "$HOME/.sandbox-home:/sandbox-home" \
+  -v "$PWD:/work/$(basename "$PWD")" -w "/work/$(basename "$PWD")" \
+  -e HOME=/sandbox-home -e USER="$(id -un)" \
+  ghcr.io/devopscoop/workstation:main-aws claude
+```
+
+Swap `claude` for `opencode` to run the other agent. The `~/.sandbox-home/` directory keeps the agents' auth, config, and history in one place on the host, shared by every project's sandbox — so you log in once, not once per project. It is deliberately **not** your real `~/.claude` (the sandbox must never touch your laptop's config; on macOS the OAuth token lives in the Keychain anyway). The project mounts at `/work/<dirname>` rather than a fixed `/work` so Claude Code keeps trust, history, and `--resume` separate per project.
 
 ## saml2aws
 
