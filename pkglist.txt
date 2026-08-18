@@ -9,8 +9,8 @@
 #   grep -vE '^(#|$)' pkglist.txt | paru -S --needed -
 #
 # Not packaged for Arch:
-# - checkov (upgrade_opentofu_modules.py security gate): `uv tool install checkov`
-#   or `pipx install checkov`
+# - checkov (optional for upgrade_opentofu_modules.py, opt-in via
+#   --scanners trivy,checkov): `uv tool install checkov` or `pipx install checkov`
 # Python library dependencies (not pacman packages): caldav
 # (caldav_delete_dupes.py) and ruamel.yaml (yaml_dedup.py),
 # e.g. `pip install caldav ruamel.yaml`.
@@ -32,6 +32,9 @@ bash
 # curl — monthly_report_linear.sh posts to the Linear GraphQL API
 curl
 
+# docker — ai_sandbox.sh runs the devopscoop workstation image with it
+docker
+
 # gh — GitHub CLI, used by github_actions/image-retention-policy.sh
 github-cli
 
@@ -51,5 +54,5 @@ saml2aws
 # for tofu, then terraform). Do NOT install opentofu directly.
 tenv-bin
 
-# trivy — module misconfiguration scanner in upgrade_opentofu_modules.py's security gate
+# trivy — advisory misconfiguration scanner in upgrade_opentofu_modules.py's security gate
 trivy

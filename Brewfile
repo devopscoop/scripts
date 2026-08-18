@@ -20,11 +20,19 @@ brew "aws-sso-cli"
 # bash - all shell scripts use `#!/usr/bin/env bash`
 brew "bash"
 
-# checkov - module misconfiguration scanner in upgrade_opentofu_modules.py's security gate
+# checkov - optional advisory scanner for upgrade_opentofu_modules.py
+# (opt-in via --scanners trivy,checkov)
 brew "checkov"
+
+# colima - provides the Docker engine (lightweight Linux VM) for ai_sandbox.sh
+# on macOS; run `colima start` first. (Alternative: the docker-desktop cask.)
+brew "colima"
 
 # curl - monthly_report_linear.sh posts to the Linear GraphQL API
 brew "curl"
+
+# Docker CLI - ai_sandbox.sh runs the workstation image with it
+brew "docker"
 
 # gh - GitHub CLI, used by github_actions/image-retention-policy.sh
 brew "gh"
@@ -45,5 +53,5 @@ brew "saml2aws"
 # tofu, then terraform). Do NOT install opentofu directly.
 brew "tenv"
 
-# trivy - module misconfiguration scanner in upgrade_opentofu_modules.py's security gate
+# trivy - advisory misconfiguration scanner in upgrade_opentofu_modules.py's security gate
 brew "trivy"
